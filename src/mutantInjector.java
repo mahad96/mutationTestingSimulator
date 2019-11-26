@@ -10,16 +10,20 @@ import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.lang.reflect.Method;
 
 public class mutantInjector {
+    static final int NUM_THREADS = 3;
+
     @Test
     public static void main(String[] args){
         ArrayList<String> info = new ArrayList<String>();
-        ArrayList<String> code = new ArrayList<String>();
+        Queue<String> code;
         double totalMutants = createLibrary();
         String originalCode = copySUT();
         info = createList();
@@ -48,14 +52,15 @@ public class mutantInjector {
         Class[] cArgs = new Class[2];
         cArgs[1] = int[].class;
         cArgs[0] = int.class;
-        int [] elemArray = {12, 15, 4, 6, 7, 10 , 12, 3};
-        int key = 4;
-        int originalResult=0;
+        int [] array = {12, 15, 4, 6, 7, 10 , 12, 3, 2000, 50, -309, 0, 21};
+        int arraySize = 13;
+        int min = 0;
+        int max = 100;
+        double originalResult=0.0;
         if (originalSuccess) {
             try {
                 Method method = Class.forName("programUnderTest").getDeclaredMethod("programUnderTest", cArgs);
-                originalResult
-                        = (int) method.invoke(null, key, elemArray);
+                originalResult = (double) method.invoke(null, array, arraySize, min, max);
                 System.out.println(originalResult);
             } catch (ClassNotFoundException e) {
                 System.err.println("Class not found: " + e);
@@ -69,65 +74,73 @@ public class mutantInjector {
             }
         }
 
-        double killedMutants = faultSimulation(code, "programUnderTest", cArgs, key, elemArray, originalResult);
-        double mutantCoverage = killedMutants/totalMutants;
+        AtomicInteger killedMutants = new AtomicInteger(0);
+        MutationTestingThread[] threads = new MutationTestingThread[NUM_THREADS];
+
+        for(int i = 0; i < threads.length; i++) {
+            threads[i] = new MutationTestingThread(killedMutants, code, "programUnderTest", cArgs, array, arraySize, min, max, originalResult);
+            threads[i].start();
+        }
+        for(int i = 0; i < threads.length; i++) {
+            threads[i].join();
+        }
+        
+        double mutantCoverage = killedMutants.get()/totalMutants;
         System.out.println("Total number of killed mutants: " + killedMutants);
         System.out.println("Total number of mutants: " + totalMutants);
         System.out.println("Mutant Coverage = " + mutantCoverage);
     }
 
-    public static double faultSimulation(ArrayList<String> code, String name, Class[] cArgs, int key, int[] elemArray, int originalResult){
-        double killedMutants = 0;
+    public static void faultSimulation(AtomicInteger killedMutants, Queue<String> code, String name, Class[] cArgs, int[] array, int arraySize, int min, int max, double originalResult){
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>();
-        for (String s : code) {
-            JavaFileObject file = new JavaSourceFromString("programUnderTest", s);
 
+        synchronized(code) {
+            if(!code.isEmpty()) {
+                JavaFileObject file = new JavaSourceFromString("programUnderTest", code.remove());
 
-            Iterable<? extends JavaFileObject> compilationUnits = Arrays.asList(file);
-            JavaCompiler.CompilationTask task = compiler.getTask(null, null, diagnostics, null, null, compilationUnits);
+                Iterable<? extends JavaFileObject> compilationUnits = Arrays.asList(file);
+                JavaCompiler.CompilationTask task = compiler.getTask(null, null, diagnostics, null, null, compilationUnits);
 
-            boolean success = task.call();
-            for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
-                System.out.println(diagnostic.getCode());
-                System.out.println(diagnostic.getKind());
-                System.out.println(diagnostic.getPosition());
-                System.out.println(diagnostic.getStartPosition());
-                System.out.println(diagnostic.getEndPosition());
-                System.out.println(diagnostic.getSource());
-                System.out.println(diagnostic.getMessage(null));
+                boolean success = task.call();
+                for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
+                    System.out.println(diagnostic.getCode());
+                    System.out.println(diagnostic.getKind());
+                    System.out.println(diagnostic.getPosition());
+                    System.out.println(diagnostic.getStartPosition());
+                    System.out.println(diagnostic.getEndPosition());
+                    System.out.println(diagnostic.getSource());
+                    System.out.println(diagnostic.getMessage(null));
 
-            }
-            System.out.println("Success: " + success);
-
-
-            if (success) {
-                try {
-                    Method method = Class.forName("programUnderTest").getDeclaredMethod("programUnderTest", cArgs);
-                    int result
-                            = (int) method.invoke(null, key, elemArray);
-                    System.out.println(result);
-                    //Assert.assertEquals(originalResult, result); currently result and originalResult are same because SUTs output does not depend on input variables so i am just entering 2 so mutant is killed
-                    Assert.assertEquals(originalResult, 2);
-                    System.out.println("Mutant killed = false");
                 }
-                catch (AssertionError ae) {
-                    System.out.println("Mutant killed = true");
-                    System.err.println(ae.toString());
-                    killedMutants++;
-                }catch (ClassNotFoundException e) {
-                    System.err.println("Class not found: " + e);
-                } catch (NoSuchMethodException e) {
-                    System.err.println("No such method: " + e);
-                }
-                catch (IllegalAccessException e) {
-                    System.err.println("Illegal access: " + e);
-                } catch (InvocationTargetException e) {
-                    System.err.println("Invocation target: " + e);
+                System.out.println("Success: " + success);
+
+
+                if (success) {
+                    try {
+                        Method method = Class.forName("programUnderTest").getDeclaredMethod("programUnderTest", cArgs);
+                        double result = (double) method.invoke(null, array, arraySize, min, max);
+                        System.out.println(result);
+                        Assert.assertEquals(originalResult, result);
+                        System.out.println("Mutant killed = false");
+                    }
+                    catch (AssertionError ae) {
+                        System.out.println("Mutant killed = true");
+                        System.err.println(ae.toString());
+                        killedMutants.incrementAndGet();
+                    }catch (ClassNotFoundException e) {
+                        System.err.println("Class not found: " + e);
+                    } catch (NoSuchMethodException e) {
+                        System.err.println("No such method: " + e);
+                    }
+                    catch (IllegalAccessException e) {
+                        System.err.println("Illegal access: " + e);
+                    } catch (InvocationTargetException e) {
+                        System.err.println("Invocation target: " + e);
+                    }
                 }
             }
         }
-        return killedMutants;
     }
 
     public static ArrayList createList(){
@@ -222,8 +235,8 @@ public class mutantInjector {
         return info;
     }
 
-    public static ArrayList injectMutants(ArrayList<String> info){
-        ArrayList<String> code = new ArrayList<String>();
+    public static Queue injectMutants(ArrayList<String> info){
+        Queue<String> code = new ConcurrentLinkedQueue<String>();
         try {
             Path path = Paths.get("src/programUnderTest.java");
             for (int i = 0; i < info.size(); i=i+2) {
@@ -421,6 +434,47 @@ public class mutantInjector {
             e.printStackTrace();
         }
         return totalMutants;
+    }
+
+    static class MutationTestingThread extends Thread {
+        AtomicInteger killedMutants;
+        Queue<String> code;
+        String name;
+        Class[] cArgs;
+        int[] array;
+        int arraySize;
+        int min;
+        int max;
+        double originalResult;
+
+        public MutationTestingThread(AtomicInteger killedMutants, Queue<String> code, String name, Class[] cArgs, int[] array, int arraySize, int min, int max, double originalResult) {
+            this.killedMutants = killedMutants;
+            this.code = code;
+            this.name = name;
+            this.cArgs = cArgs;
+            this.array = array;
+            this.arraySize = arraySize;
+            this.min = min;
+            this.max = max;
+            this.originalResult = originalResult;
+        }
+    
+        @Override
+        public void run() {
+            try{
+                while(!code.isEmpty()) {
+                    synchronized(code) {
+                        if(!code.isEmpty()) {
+                            faultSimulation(killedMutants, code, name, cArgs, array, arraySize, min, max, originalResult);
+                        }
+                    }
+                }
+                Thread.sleep(100);
+            }
+            catch(Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
 
