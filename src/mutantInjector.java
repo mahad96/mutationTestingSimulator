@@ -18,7 +18,6 @@ import java.lang.reflect.Method;
 public class mutantInjector {
     @Test
     public static void main(String[] args){
-        double killedMutants=0;
         ArrayList<String> info = new ArrayList<String>();
         ArrayList<String> code = new ArrayList<String>();
         double totalMutants = createLibrary();
@@ -70,12 +69,23 @@ public class mutantInjector {
             }
         }
 
+        double killedMutants = faultSimulation(code, "programUnderTest", cArgs, key, elemArray, originalResult);
+        double mutantCoverage = killedMutants/totalMutants;
+        System.out.println("Total number of killed mutants: " + killedMutants);
+        System.out.println("Total number of mutants: " + totalMutants);
+        System.out.println("Mutant Coverage = " + mutantCoverage);
+    }
+
+    public static double faultSimulation(ArrayList<String> code, String name, Class[] cArgs, int key, int[] elemArray, int originalResult){
+        double killedMutants = 0;
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>();
         for (String s : code) {
             JavaFileObject file = new JavaSourceFromString("programUnderTest", s);
 
 
             Iterable<? extends JavaFileObject> compilationUnits = Arrays.asList(file);
-            task = compiler.getTask(null, null, diagnostics, null, null, compilationUnits);
+            JavaCompiler.CompilationTask task = compiler.getTask(null, null, diagnostics, null, null, compilationUnits);
 
             boolean success = task.call();
             for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
@@ -117,10 +127,7 @@ public class mutantInjector {
                 }
             }
         }
-        double mutantCoverage = killedMutants/totalMutants;
-        System.out.println("Total number of killed mutants: " + killedMutants);
-        System.out.println("Total number of mutants: " + totalMutants);
-        System.out.println("Mutant Coverage = " + mutantCoverage);
+        return killedMutants;
     }
 
     public static ArrayList createList(){
