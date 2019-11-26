@@ -76,12 +76,13 @@ public class mutantInjector {
         System.out.println("Mutant Coverage = " + mutantCoverage);
     }
 
+
     public static double faultSimulation(ArrayList<String> code, String name, Class[] cArgs, int key, int[] elemArray, int originalResult){
         double killedMutants = 0;
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>();
         for (String s : code) {
-            JavaFileObject file = new JavaSourceFromString("programUnderTest", s);
+            JavaFileObject file = new JavaSourceFromString(name, s);
 
 
             Iterable<? extends JavaFileObject> compilationUnits = Arrays.asList(file);
@@ -103,7 +104,7 @@ public class mutantInjector {
 
             if (success) {
                 try {
-                    Method method = Class.forName("programUnderTest").getDeclaredMethod("programUnderTest", cArgs);
+                    Method method = Class.forName(name).getDeclaredMethod(name, cArgs);
                     int result
                             = (int) method.invoke(null, key, elemArray);
                     System.out.println(result);

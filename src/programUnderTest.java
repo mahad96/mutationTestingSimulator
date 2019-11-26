@@ -9,7 +9,6 @@ public class programUnderTest {
             mid = (top + bottom)/2;
             if (elemArray [mid] == key){
                 result = mid;
-                return result;
 
             }
             else {
@@ -18,6 +17,7 @@ public class programUnderTest {
                 }
                 else top = mid -1;
             }
+            bottom++;
         }
         return result;
     }

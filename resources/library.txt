@@ -16,15 +16,19 @@ Line of code under test: 9
 Original arithmetic information:             mid = (top + bottom)/2;
 Type of mutants inserted: +, -, *
 
-Line of code under test: 17
+Line of code under test: 16
 Original arithmetic information:                     bottom = mid+1;
 Type of mutant inserted: -
 
-Line of code under test: 19
+Line of code under test: 18
 Original arithmetic information:                 else top = mid -1;
 Type of mutant inserted: +
 
+Line of code under test: 20
+Original arithmetic information:             bottom++;
+Type of mutant inserted: - (--)
+
 Total number of + mutants generated: 4
-Total number of - mutants generated: 3
+Total number of - mutants generated: 4
 Total number of * mutants generated: 3
 Total number of / mutants generated: 2
